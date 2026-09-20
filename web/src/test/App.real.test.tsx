@@ -20,6 +20,12 @@ async function submit() {
   await userEvent.click(screen.getByTestId("submit"));
 }
 
+async function setField(testid: string, value: string) {
+  const el = screen.getByTestId(testid);
+  await userEvent.clear(el);
+  await userEvent.type(el, value);
+}
+
 describe("真实请求 + 录入 + 高亮（App）", () => {
   it("录入节点/禁入圈顺序并真实请求：相切场景判定不可敷设且突出首个碰撞", async () => {
     render(<App />);
@@ -82,13 +88,24 @@ describe("真实请求 + 录入 + 高亮（App）", () => {
     await waitFor(() =>
       expect(screen.getByTestId("banner-collision")).toBeInTheDocument(),
     );
-    // 首个：线段0 × 孔0；其余列表含 线段1 × 孔1
+    // 首个为升序首项（线段0 × 孔0），而非侵入更深的 (线段1 × 孔1)
+    const firstDetail =
+      screen.getByTestId("first-collision-detail").textContent ?? "";
+    expect(firstDetail).toContain("线段 #0");
+    expect(firstDetail).toContain("禁入圈 #0");
+    // 其余列表含 线段1 × 孔1，且不重复首项
     const rest = screen.getByTestId("rest-collisions");
     expect(rest.textContent).toContain("线段 #1");
     expect(rest.textContent).toContain("禁入圈 #1");
-    // 两个碰撞标记都在图上，首个为星标
+    expect(within(rest).getAllByRole("listitem")).toHaveLength(1);
+    // 两个碰撞标记都在图上，星标落在首个碰撞分组内
     expect(screen.getByTestId("collision-0-0")).toBeInTheDocument();
     expect(screen.getByTestId("collision-1-1")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("collision-0-0")).getByTestId(
+        "first-collision-marker",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("非法输入（非正半径）不发请求，返回字段级错误并清除旧结论", async () => {
@@ -121,5 +138,92 @@ describe("真实请求 + 录入 + 高亮（App）", () => {
     const nodeList = screen.getByTestId("node-list");
     // 两行录入仍按输入顺序存在
     expect(within(nodeList).getAllByText(/#\d/).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("极近但未侵入安全圈的路线判定为可敷设（双精度判定，不做三位小数比较）", async () => {
+    render(<App />);
+    // 路径 (0,0)->(1,0)，圆心 (3,10)，电缆 5，孔 5.1978：
+    // 最近点 (1,0)，距离 sqrt(104)=10.198039... > 扩张半径 10.1978，
+    // 两者三位小数展示值均为 10.198，但按双精度判定应为安全。
+    await setField("node-0-x", "0");
+    await setField("node-0-y", "0");
+    await setField("node-1-x", "1");
+    await setField("node-1-y", "0");
+    await setField("circle-0-x", "3");
+    await setField("circle-0-y", "10");
+    await setField("circle-0-radius", "5.1978");
+    await submit();
+
+    await waitFor(() => expect(screen.getByTestId("banner-ok")).toBeInTheDocument());
+    expect(screen.queryByTestId("banner-collision")).not.toBeInTheDocument();
+  });
+
+  it("相邻线段公共端点处的两处碰撞全部返回：数量、排序与明细完整", async () => {
+    render(<App />);
+    // 路径 (-10,0)->(0,0)->(0,10)，圆心 (1,-1)，孔 0.5，电缆 1：
+    // 两条线段最近点都是公共端点 (0,0)，距离 sqrt(2) <= 1.5，各判一次碰撞。
+    await setField("node-0-x", "-10");
+    await setField("node-0-y", "0");
+    await setField("node-1-x", "0");
+    await setField("node-1-y", "0");
+    await userEvent.click(screen.getByTestId("add-node"));
+    await setField("node-2-x", "0");
+    await setField("node-2-y", "10");
+    await setField("cable-radius", "1");
+    await setField("circle-0-x", "1");
+    await setField("circle-0-y", "-1");
+    await setField("circle-0-radius", "0.5");
+    await submit();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("banner-collision")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("banner-collision").textContent).toContain("2 处碰撞");
+    // 首项为 (线段0, 孔0)，其余列表恰含 (线段1, 孔0) 一项
+    const firstDetail =
+      screen.getByTestId("first-collision-detail").textContent ?? "";
+    expect(firstDetail).toContain("线段 #0");
+    expect(firstDetail).toContain("禁入圈 #0");
+    const restItems = within(screen.getByTestId("rest-collisions")).getAllByRole(
+      "listitem",
+    );
+    expect(restItems).toHaveLength(1);
+    expect(restItems[0].textContent).toContain("线段 #1");
+    // 两处碰撞标记都在图上，星标突出首个
+    expect(screen.getByTestId("collision-0-0")).toBeInTheDocument();
+    expect(screen.getByTestId("collision-1-0")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("collision-0-0")).getByTestId(
+        "first-collision-marker",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("巨大扩张安全圈完整纳入画布视野", async () => {
+    render(<App />);
+    // 路径 (-1,0)->(1,0)，孔 (0,0) 半径 1，电缆 100 -> 扩张半径 101。
+    await setField("node-0-x", "-1");
+    await setField("node-0-y", "0");
+    await setField("node-1-x", "1");
+    await setField("node-1-y", "0");
+    await setField("cable-radius", "100");
+    await setField("circle-0-x", "0");
+    await setField("circle-0-y", "0");
+    await setField("circle-0-radius", "1");
+    await submit();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("banner-collision")).toBeInTheDocument(),
+    );
+    // 扩张安全圈（含边界）必须完整落在 880x560 画布内
+    const expanded = screen.getByTestId("expanded-circle-0");
+    const cx = Number(expanded.getAttribute("cx"));
+    const cy = Number(expanded.getAttribute("cy"));
+    const r = Number(expanded.getAttribute("r"));
+    expect(r).toBeGreaterThan(0);
+    expect(cx - r).toBeGreaterThanOrEqual(0);
+    expect(cx + r).toBeLessThanOrEqual(880);
+    expect(cy - r).toBeGreaterThanOrEqual(0);
+    expect(cy + r).toBeLessThanOrEqual(560);
   });
 });

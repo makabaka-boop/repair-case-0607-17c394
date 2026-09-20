@@ -122,6 +122,37 @@ def test_display_coordinates_rounded_to_three_decimals():
     assert len(str(c["distance"]).split(".")[1]) <= 3
 
 
+def test_near_miss_is_feasible_despite_display_tie():
+    """距离与扩张半径展示值相同（10.198）但真实距离更大 -> 可敷设。"""
+    body = base_body(
+        nodes=[{"x": 0, "y": 0}, {"x": 1, "y": 0}],
+        cable_radius=5,
+        circles=[{"x": 3, "y": 10, "radius": 5.1978}],
+    )
+    data = post(body).json()
+    assert data["feasible"] is True
+    assert data["collision_count"] == 0
+    assert data["collisions"] == []
+
+
+def test_shared_endpoint_collisions_all_returned_and_sorted():
+    """公共端点上的两处碰撞全部返回，首项为升序列表第一个。"""
+    body = base_body(
+        nodes=[{"x": -10, "y": 0}, {"x": 0, "y": 0}, {"x": 0, "y": 10}],
+        cable_radius=1,
+        circles=[{"x": 1, "y": -1, "radius": 0.5}],
+    )
+    data = post(body).json()
+    assert data["feasible"] is False
+    assert data["collision_count"] == 2
+    order = [(c["segment_index"], c["circle_index"]) for c in data["collisions"]]
+    assert order == [(0, 0), (1, 0)]
+    first = data["first_collision"]
+    assert (first["segment_index"], first["circle_index"]) == (0, 0)
+    assert first["nearest"] == {"x": 0.0, "y": 0.0}
+    assert first["distance"] == 1.414
+
+
 # ---------- 字段级错误：整次预检失败且不产生结论 ----------
 
 def assert_field_error(body, field_fragment):

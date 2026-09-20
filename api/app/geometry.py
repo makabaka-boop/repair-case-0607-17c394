@@ -66,21 +66,16 @@ def detect_collisions(
     碰撞判据使用 ``<=``，故相切边界稳定地判为碰撞。
     """
     results: List[Collision] = []
-    collision_positions: set[Point] = set()
     for seg_idx in range(len(nodes) - 1):
         a = nodes[seg_idx]
         b = nodes[seg_idx + 1]
         for cir_idx, (center, circle_r) in enumerate(circles):
             nearest, distance = nearest_point_on_segment(center, a, b)
             expanded = circle_r + cable_radius
-            # Match the precision exposed by the API and avoid duplicate
-            # markers at the same displayed decision position.
-            display_nearest = (round(nearest[0], 3), round(nearest[1], 3))
-            if (
-                round(distance, 3) <= round(expanded, 3)
-                and display_nearest not in collision_positions
-            ):
-                collision_positions.add(display_nearest)
+            # 判定全程使用双精度；三位小数仅用于响应展示。
+            # 每个 (线段, 禁入圈) 组合独立判定，即使相邻线段在公共端点
+            # 产生相同最近点也各自保留。
+            if distance <= expanded:
                 results.append(
                     Collision(
                         segment_index=seg_idx,
