@@ -122,6 +122,60 @@ def test_display_coordinates_rounded_to_three_decimals():
     assert len(str(c["distance"]).split(".")[1]) <= 3
 
 
+def test_near_miss_not_changed_by_three_decimal_display():
+    body = base_body(
+        nodes=[{"x": 0, "y": 0}, {"x": 1, "y": 0}],
+        cable_radius=5,
+        circles=[{"x": 3, "y": 10, "radius": 5.1978}],
+    )
+    data = post(body).json()
+    assert data["feasible"] is True
+    assert data["collision_count"] == 0
+    assert data["first_collision"] is None
+    assert data["collisions"] == []
+
+
+def test_shared_endpoint_returns_collision_for_each_segment():
+    body = base_body(
+        nodes=[{"x": -10, "y": 0}, {"x": 0, "y": 0}, {"x": 0, "y": 10}],
+        cable_radius=1,
+        circles=[{"x": 1, "y": -1, "radius": 0.5}],
+    )
+    data = post(body).json()
+    assert data["collision_count"] == 2
+    order = [
+        (c["segment_index"], c["circle_index"])
+        for c in data["collisions"]
+    ]
+    assert order == [(0, 0), (1, 0)]
+    assert (
+        data["first_collision"]["segment_index"],
+        data["first_collision"]["circle_index"],
+    ) == (0, 0)
+    assert data["first_collision"]["nearest"] == {"x": 0.0, "y": 0.0}
+
+
+def test_first_collision_follows_order_not_intrusion_depth():
+    body = base_body(
+        nodes=[{"x": 0, "y": 0}, {"x": 10, "y": 0}, {"x": 20, "y": 0}],
+        cable_radius=1,
+        circles=[
+            {"x": 5, "y": 2, "radius": 1.1},
+            {"x": 15, "y": 0, "radius": 1},
+        ],
+    )
+    data = post(body).json()
+    assert data["collision_count"] == 2
+    assert [
+        (c["segment_index"], c["circle_index"])
+        for c in data["collisions"]
+    ] == [(0, 0), (1, 1)]
+    first = data["first_collision"]
+    assert (first["segment_index"], first["circle_index"]) == (0, 0)
+    assert first["distance"] == 2.0
+    assert first["expanded_radius"] == 2.1
+
+
 # ---------- 字段级错误：整次预检失败且不产生结论 ----------
 
 def assert_field_error(body, field_fragment):

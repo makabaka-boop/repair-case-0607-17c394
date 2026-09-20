@@ -24,8 +24,9 @@ function computeView(result: PrecheckResponse): View {
     ys.push(p.y);
   });
   result.circles.forEach((c) => {
-    xs.push(c.center.x - c.radius, c.center.x + c.radius);
-    ys.push(c.center.y - c.radius, c.center.y + c.radius);
+    // 视窗必须容纳扩张安全圈；只按孔本身取边界会把电缆安全边界裁到画布外。
+    xs.push(c.center.x - c.expanded_radius, c.center.x + c.expanded_radius);
+    ys.push(c.center.y - c.expanded_radius, c.center.y + c.expanded_radius);
   });
 
   let minX = Math.min(...xs);
@@ -102,13 +103,8 @@ export function Scene({ result }: Props) {
     .map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x).toFixed(2)} ${sy(p.y).toFixed(2)}`)
     .join(" ");
 
-  // Keep the diagram aligned with the deepest-intrusion detail.
-  const first =
-    result.collisions.length > 0
-      ? result.collisions.reduce((closest, collision) =>
-          collision.distance < closest.distance ? collision : closest,
-        )
-      : null;
+  // 图形高亮必须与接口的首个碰撞及明细顺序保持一致。
+  const first = result.first_collision;
   const firstKey = first
     ? `${first.segment_index}-${first.circle_index}`
     : null;

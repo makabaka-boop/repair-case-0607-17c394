@@ -98,13 +98,9 @@ export function App() {
     setNetworkError(null);
   };
 
-  // Surface the deepest intrusion first so it can be addressed immediately.
-  const first =
-    result && result.collisions.length > 0
-      ? result.collisions.reduce((closest, collision) =>
-          collision.distance < closest.distance ? collision : closest,
-        )
-      : null;
+  // 后端按 (线段下标, 禁入圈输入顺序) 确定首个碰撞；页面必须直接使用该结果，
+  // 不能再按距离自行改排，否则“首个”和“其余”会与接口明细不一致。
+  const first = result?.first_collision ?? null;
   const rest = result ? result.collisions.slice(1) : [];
 
   return (

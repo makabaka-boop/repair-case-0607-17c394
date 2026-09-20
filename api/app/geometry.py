@@ -2,8 +2,11 @@
 
 判定规则：
 对每条闭线段（含端点），求圆心到该线段的**唯一最近点**及其距离；
-当 ``distance <= 禁入圈半径 + 电缆半径`` 时判定碰撞，
+当双精度 ``distance <= 禁入圈半径 + 电缆半径`` 时判定碰撞，
 最近点统一作为判定位置。相切（恰好相等）亦判碰撞。
+
+三位小数舍入只用于接口展示，不能参与碰撞判定；每个
+「线段 × 禁入圈」组合都是独立结果，即使两条线段在公共端点的最近点重合也不去重。
 """
 
 from __future__ import annotations
@@ -66,21 +69,13 @@ def detect_collisions(
     碰撞判据使用 ``<=``，故相切边界稳定地判为碰撞。
     """
     results: List[Collision] = []
-    collision_positions: set[Point] = set()
     for seg_idx in range(len(nodes) - 1):
         a = nodes[seg_idx]
         b = nodes[seg_idx + 1]
         for cir_idx, (center, circle_r) in enumerate(circles):
             nearest, distance = nearest_point_on_segment(center, a, b)
             expanded = circle_r + cable_radius
-            # Match the precision exposed by the API and avoid duplicate
-            # markers at the same displayed decision position.
-            display_nearest = (round(nearest[0], 3), round(nearest[1], 3))
-            if (
-                round(distance, 3) <= round(expanded, 3)
-                and display_nearest not in collision_positions
-            ):
-                collision_positions.add(display_nearest)
+            if distance <= expanded:
                 results.append(
                     Collision(
                         segment_index=seg_idx,

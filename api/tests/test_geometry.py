@@ -105,6 +105,25 @@ def test_collisions_sorted_by_segment_then_circle():
     assert order == [(0, 1), (1, 0), (1, 2)]
 
 
+def test_display_rounding_does_not_create_collision():
+    """距离与扩张半径展示三位后相同，但双精度原值未越界时仍为可敷设。"""
+    nodes = [(0.0, 0.0), (1.0, 0.0)]
+    # sqrt(104) ≈ 10.198039，扩张半径 10.1978；二者展示三位均约为 10.198。
+    hits = detect_collisions(nodes, [((3.0, 10.0), 5.1978)], cable_radius=5.0)
+    assert hits == []
+
+
+def test_shared_endpoint_collision_counted_once_per_segment():
+    """同一公共端点对两条相邻线段分别构成碰撞时，两个组合都必须保留。"""
+    nodes = [(-10.0, 0.0), (0.0, 0.0), (0.0, 10.0)]
+    hits = detect_collisions(nodes, [((1.0, -1.0), 0.5)], cable_radius=1.0)
+    assert len(hits) == 2
+    assert [(h.segment_index, h.circle_index) for h in hits] == [(0, 0), (1, 0)]
+    assert all(h.nearest == (0.0, 0.0) for h in hits)
+    assert all(h.distance == pytest.approx(math.sqrt(2.0)) for h in hits)
+    assert all(h.expanded_radius == 1.5 for h in hits)
+
+
 def test_no_circle_means_feasible():
     hits = detect_collisions([(0.0, 0.0), (1.0, 1.0)], [], cable_radius=1.0)
     assert hits == []
